@@ -6,15 +6,16 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
 use filetime::{FileTime, set_file_mtime};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha1::{Digest, Sha1};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use time::macros::format_description;
 
+use crate::anthropic::RequestMessage;
 use crate::config::{get_claude_config_home_dir, normalize_nfc};
-use crate::core::RunOutcome;
+use crate::core::{ConversationMessage, MessageRole, RunOutcome};
 
 pub const MAX_SANITIZED_LENGTH: usize = 200;
 const LITE_READ_BUF_SIZE: usize = 65_536;
@@ -157,6 +158,11 @@ struct MessageLine<'a> {
     kind: &'a str,
     timestamp: &'a str,
     message: Message<'a>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct LiveSessionState {
+    messages: Vec<RequestMessage>,
 }
 
 pub fn projects_dir() -> PathBuf {
@@ -309,7 +315,62 @@ pub fn append_turn(
         .with_context(|| format!("opening {}", handle.session_path.display()))?;
     file.write_all(payload.as_bytes())
         .with_context(|| format!("writing {}", handle.session_path.display()))?;
-    set_session_mtime(&handle.session_path, turn_ms)
+    set_session_mtime(&handle.session_path, turn_ms)?;
+
+    if let Some(messages) = outcome.api_messages.as_ref() {
+        write_live_session_state(&handle.session_path, messages)?;
+    }
+
+    Ok(())
+}
+
+pub fn load_conversation_history(session_path: &Path) -> Result<Vec<ConversationMessage>> {
+    let content = fs::read_to_string(session_path)
+        .with_context(|| format!("reading {}", session_path.display()))?;
+    let mut messages = Vec::new();
+
+    for line in content.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+
+        let Ok(entry) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        let kind = entry.get("type").and_then(Value::as_str);
+        if !matches!(kind, Some("user" | "assistant")) {
+            continue;
+        }
+
+        let Some(message) = entry.get("message") else {
+            continue;
+        };
+        let role = match message.get("role").and_then(Value::as_str) {
+            Some("user") => MessageRole::User,
+            Some("assistant") => MessageRole::Assistant,
+            _ => continue,
+        };
+        let content = extract_message_content(message);
+        if content.trim().is_empty() {
+            continue;
+        }
+        messages.push(ConversationMessage { role, content });
+    }
+
+    Ok(messages)
+}
+
+pub fn load_live_request_history(session_path: &Path) -> Result<Option<Vec<RequestMessage>>> {
+    let state_path = live_state_path(session_path);
+    if !state_path.is_file() {
+        return Ok(None);
+    }
+
+    let contents =
+        fs::read(&state_path).with_context(|| format!("reading {}", state_path.display()))?;
+    let state: LiveSessionState = serde_json::from_slice(&contents)
+        .with_context(|| format!("parsing {}", state_path.display()))?;
+    Ok(Some(state.messages))
 }
 
 pub fn build_chat_report(handle: &SessionHandle, assistant_texts: Vec<String>) -> ChatReport {
@@ -567,6 +628,26 @@ fn create_session_with_now(
         cwd: cwd_str,
         model: model.to_string(),
     })
+}
+
+fn write_live_session_state(session_path: &Path, messages: &[RequestMessage]) -> Result<()> {
+    let state = LiveSessionState {
+        messages: messages.to_vec(),
+    };
+    let mut payload = serde_json::to_vec_pretty(&state)?;
+    payload.push(b'\n');
+    fs::write(live_state_path(session_path), payload)
+        .with_context(|| format!("writing {}", live_state_path(session_path).display()))
+}
+
+fn live_state_path(session_path: &Path) -> PathBuf {
+    let mut path = session_path.to_path_buf();
+    let base_name = session_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("session.jsonl");
+    path.set_file_name(format!("{base_name}.live.json"));
+    path
 }
 
 fn set_session_mtime(session_path: &Path, now_ms: i64) -> Result<()> {
@@ -853,6 +934,24 @@ fn parse_session_info_from_lite(
         tag,
         created_at,
     })
+}
+
+fn extract_message_content(message: &Value) -> String {
+    match message.get("content") {
+        Some(Value::String(text)) => text.to_string(),
+        Some(Value::Array(blocks)) => {
+            let mut text = String::new();
+            for block in blocks {
+                if block.get("type").and_then(Value::as_str) == Some("text")
+                    && let Some(value) = block.get("text").and_then(Value::as_str)
+                {
+                    text.push_str(value);
+                }
+            }
+            text
+        }
+        _ => String::new(),
+    }
 }
 
 fn modified_ms(metadata: &fs::Metadata) -> Option<i64> {

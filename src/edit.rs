@@ -1,9 +1,9 @@
-use std::fs;
-use std::io;
 use std::path::Path;
 
 use anyhow::{Result, anyhow, bail};
 use serde::Serialize;
+
+use crate::file_tools::{DiffHunk, build_display_patch, read_file_for_edit, write_text_content};
 
 const LEFT_SINGLE_CURLY_QUOTE: char = '‘';
 const RIGHT_SINGLE_CURLY_QUOTE: char = '’';
@@ -19,24 +19,16 @@ pub struct EditReport {
     pub replace_all: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum FileEncoding {
-    Utf8,
-    Utf16Le,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LineEndingType {
-    CrLf,
-    Lf,
-}
-
-#[derive(Debug)]
-struct FileWithMetadata {
-    content: String,
-    encoding: FileEncoding,
-    line_endings: LineEndingType,
-    file_exists: bool,
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct EditToolReport {
+    pub file_path: String,
+    pub old_string: String,
+    pub new_string: String,
+    pub original_file: String,
+    pub structured_patch: Vec<DiffHunk>,
+    pub user_modified: bool,
+    pub replace_all: bool,
 }
 
 pub fn normalize_quotes(value: &str) -> String {
@@ -114,11 +106,26 @@ pub fn perform_edit(
     new_string: &str,
     replace_all: bool,
 ) -> Result<EditReport> {
+    let report = perform_edit_tool(file_path, old_string, new_string, replace_all)?;
+    Ok(EditReport {
+        file_path: report.file_path,
+        actual_old_string: report.old_string,
+        actual_new_string: report.new_string,
+        replace_all: report.replace_all,
+    })
+}
+
+pub fn perform_edit_tool(
+    file_path: &Path,
+    old_string: &str,
+    new_string: &str,
+    replace_all: bool,
+) -> Result<EditToolReport> {
     if old_string == new_string {
         bail!("No changes to make: old_string and new_string are exactly the same.");
     }
 
-    let file = read_file_with_metadata(file_path)?;
+    let file = read_file_for_edit(file_path)?;
     if !file.file_exists && !old_string.is_empty() {
         bail!("File does not exist.");
     }
@@ -162,109 +169,19 @@ pub fn perform_edit(
 
     write_text_content(file_path, &updated_file, file.encoding, file.line_endings)?;
 
-    Ok(EditReport {
+    Ok(EditToolReport {
         file_path: file_path.to_string_lossy().to_string(),
-        actual_old_string,
-        actual_new_string,
+        old_string: actual_old_string,
+        new_string: actual_new_string,
+        original_file: file.content.clone(),
+        structured_patch: build_display_patch(
+            &file_path.to_string_lossy(),
+            &file.content,
+            &updated_file,
+        ),
+        user_modified: false,
         replace_all,
     })
-}
-
-fn read_file_with_metadata(file_path: &Path) -> Result<FileWithMetadata> {
-    match fs::read(file_path) {
-        Ok(bytes) => {
-            let encoding = detect_encoding(&bytes);
-            let raw = decode_bytes(&bytes, encoding);
-            let line_endings = detect_line_endings(&raw);
-            Ok(FileWithMetadata {
-                content: raw.replace("\r\n", "\n"),
-                encoding,
-                line_endings,
-                file_exists: true,
-            })
-        }
-        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(FileWithMetadata {
-            content: String::new(),
-            encoding: FileEncoding::Utf8,
-            line_endings: LineEndingType::Lf,
-            file_exists: false,
-        }),
-        Err(err) => Err(err.into()),
-    }
-}
-
-fn detect_encoding(bytes: &[u8]) -> FileEncoding {
-    if bytes.len() >= 2 && bytes[0] == 0xff && bytes[1] == 0xfe {
-        FileEncoding::Utf16Le
-    } else {
-        FileEncoding::Utf8
-    }
-}
-
-fn decode_bytes(bytes: &[u8], encoding: FileEncoding) -> String {
-    match encoding {
-        FileEncoding::Utf8 => String::from_utf8_lossy(bytes).into_owned(),
-        FileEncoding::Utf16Le => {
-            let body = if bytes.starts_with(&[0xff, 0xfe]) {
-                &bytes[2..]
-            } else {
-                bytes
-            };
-            let units: Vec<u16> = body
-                .chunks_exact(2)
-                .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
-                .collect();
-            String::from_utf16_lossy(&units)
-        }
-    }
-}
-
-fn detect_line_endings(content: &str) -> LineEndingType {
-    let mut crlf_count = 0usize;
-    let mut lf_count = 0usize;
-    let chars: Vec<char> = content.chars().collect();
-
-    for idx in 0..chars.len() {
-        if chars[idx] == '\n' {
-            if idx > 0 && chars[idx - 1] == '\r' {
-                crlf_count += 1;
-            } else {
-                lf_count += 1;
-            }
-        }
-    }
-
-    if crlf_count > lf_count {
-        LineEndingType::CrLf
-    } else {
-        LineEndingType::Lf
-    }
-}
-
-fn write_text_content(
-    file_path: &Path,
-    content: &str,
-    encoding: FileEncoding,
-    endings: LineEndingType,
-) -> Result<()> {
-    let mut to_write = content.to_string();
-    if endings == LineEndingType::CrLf {
-        to_write = content.replace("\r\n", "\n").replace('\n', "\r\n");
-    }
-
-    let bytes = match encoding {
-        FileEncoding::Utf8 => to_write.into_bytes(),
-        FileEncoding::Utf16Le => {
-            let mut bytes = vec![0xff, 0xfe];
-            for unit in to_write.encode_utf16() {
-                bytes.extend_from_slice(&unit.to_le_bytes());
-            }
-            bytes
-        }
-    };
-
-    fs::write(file_path, bytes)?;
-    Ok(())
 }
 
 fn replace_text(content: &str, search: &str, replace: &str, replace_all: bool) -> String {
