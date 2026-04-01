@@ -11,9 +11,7 @@
 </p>
 
 <p align="center">
-  Nano-Claude-Code is rebuilding Claude Code in Rust without flattening the product into a simpler non-agentic clone.
-  The goal is architectural fidelity: preserve the tool loop, session model, sub-agent orchestration, MCP/tool routing,
-  and core agent behavior while moving the runtime to Rust.
+  Nano-Claude-Code is a Rust implementation of Claude Code in the most faithful migration on the internet. The exact same architecture as Claude Code while moving the runtime to Rust.
 </p>
 
 <p align="center">
