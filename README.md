@@ -122,3 +122,8 @@ then watch this repo.
 The interesting part is not that it is in Rust.
 
 The interesting part is that it is trying to carry the exact agentic architecture over without blinking.
+
+## Follow Sahib
+
+- X: https://x.com/singularity_sah
+- LinkedIn: https://www.linkedin.com/in/sahibal/
