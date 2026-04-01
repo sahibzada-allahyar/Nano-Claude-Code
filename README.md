@@ -1,13 +1,10 @@
-<p align="center">
-  <img src="./Make_a_github_202604010302.png" alt="Nano-Claude-Code logo" width="900" />
-</p>
-
-<h1 align="center">Nano-Claude-Code</h1>
-
 <h2 align="center">A Rust Implementation of Claude Code</h2>
 
 <p align="center">
   <strong>Faithful migration. Same agentic architecture. Rust runtime.</strong>
+</p>
+<p align="center">
+  <img src="./Make_a_github_202604010302.png" alt="Nano-Claude-Code logo" width="900" />
 </p>
 
 <p align="center">
@@ -123,7 +120,7 @@ The interesting part is not that it is in Rust.
 
 The interesting part is that it is trying to carry the exact agentic architecture over without blinking.
 
-## Follow Sahib
+## To get in touch with the author, Sahibzada Allahyar:
 
 - X: https://x.com/singularity_sah
 - LinkedIn: https://www.linkedin.com/in/sahibal/
