@@ -26,6 +26,12 @@ This project exists because that model deserves a Rust runtime:
 - better foundations for long-running local agents
 - a cleaner path to shipping a serious native implementation
 
+## See It In Action
+
+<p align="center">
+  <img src="./nano-claude-code-demo-edited.gif" alt="Nano-Claude-Code demo" width="1000" />
+</p>
+
 ## What “Faithful” Means Here
 
 Nano-Claude-Code is not trying to imitate the vibe of Claude Code while replacing the internals with a different product.
@@ -83,12 +89,6 @@ Or run the demo smoke path:
 ```bash
 ./scripts/demo-smoke.sh
 ```
-
-## See It In Action
-
-<p align="center">
-  <img src="./nano-claude-code-demo-edited.gif" alt="Nano-Claude-Code demo" width="1000" />
-</p>
 
 ## Why It Could Matter
 
