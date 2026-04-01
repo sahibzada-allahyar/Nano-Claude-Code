@@ -84,6 +84,12 @@ Or run the demo smoke path:
 ./scripts/demo-smoke.sh
 ```
 
+## See It In Action
+
+<p align="center">
+  <img src="./nano-claude-code-demo-edited.gif" alt="Nano-Claude-Code demo" width="1000" />
+</p>
+
 ## Why It Could Matter
 
 If this works, the outcome is bigger than “a Rust rewrite”.
