@@ -4,7 +4,7 @@
   <strong>Faithful migration. Same agentic architecture. Rust runtime.</strong>
 </p>
 <p align="center">
-  <img src="./Make_a_github_202604010302.png" alt="Nano-Claude-Code logo" width="900" />
+  <img src="./Make_a_github_202604010302.jpg" alt="Nano-Claude-Code logo" width="900" />
 </p>
 
 <p align="center">
