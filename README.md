@@ -1,3 +1,5 @@
+Personal website: [Sahibzada Allahyar](https://sahibzada-allahyar.github.io)
+
 <h2 align="center">A Rust Implementation of Claude Code</h2>
 
 <p align="center">
